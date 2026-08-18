@@ -1,0 +1,19 @@
+name: Branch Practice
+
+on:
+  push:
+    branches:
+      - study/step-02
+
+permissions:
+  contents: read
+
+jobs:
+  practice:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print messages
+        run: |
+          echo "I made this workflow!!!!!!!!!!!!!!!"
+          echo "Branch: $GITHUB_REF_NAME"
