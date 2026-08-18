@@ -1,0 +1,49 @@
+name: Dropbox Upload Practice
+
+on:
+  push:
+    branches:
+      - study/step-02
+    paths:
+      - .github/workflows/dropbox-upload.yml
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create test file
+        run: |
+          mkdir -p output
+          {
+            echo "Created by GitHub Actions"
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Branch: $GITHUB_REF_NAME"
+            echo "Run ID: $GITHUB_RUN_ID"
+            echo "Commit: $GITHUB_SHA"
+            echo "Created at: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } > output/dropbox-test.txt
+
+      - name: Check Dropbox secret
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$DROPBOX_ACCESS_TOKEN" ]; then
+            echo "DROPBOX_ACCESS_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Upload test file to Dropbox
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+          DROPBOX_PATH: /github-actions-tests/dropbox-test-${{ github.run_id }}.txt
+        run: |
+          DROPBOX_API_ARG=$(python3 -c 'import json, os; print(json.dumps({"path": os.environ["DROPBOX_PATH"], "mode": "add", "autorename": True, "mute": False, "strict_conflict": False}))')
+
+          curl --fail-with-body --silent --show-error             --request POST "https://content.dropboxapi.com/2/files/upload"             --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN"             --header "Dropbox-API-Arg: $DROPBOX_API_ARG"             --header "Content-Type: application/octet-stream"             --data-binary @output/dropbox-test.txt             --output output/dropbox-response.json
+
+          python3 -c 'import json; data=json.load(open("output/dropbox-response.json")); print("Uploaded:", data["path_display"], "(" + str(data["size"]) + " bytes)")'
