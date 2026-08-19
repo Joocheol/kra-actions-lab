@@ -1,0 +1,32 @@
+name: KRA API Practice
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_month:
+        description: "수집 월(YYYYMM)"
+        required: true
+        default: "202503"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check-settings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show collection plan
+        run: echo "서울 ${{ inputs.rc_month }} 자료를 수집합니다."
+
+      - name: Check API key
+        env:
+          SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+        run: |
+          if [ -z "$SERVICE_KEY" ]; then
+            echo "::error::DATA_GO_KR_SERVICE_KEY가 없습니다."
+            exit 1
+          fi
+
+          echo "API 키를 정상적으로 불러왔습니다."
