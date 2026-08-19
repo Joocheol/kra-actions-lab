@@ -20,7 +20,7 @@ jobs:
       - name: Show collection plan
         run: echo "서울 ${{ inputs.rc_month }} 자료를 수집합니다."
 
-      - name: Check API key
+      - name: Check KRA API key
         env:
           SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
         run: |
@@ -29,7 +29,7 @@ jobs:
             exit 1
           fi
 
-          echo "API 키를 정상적으로 불러왔습니다."
+          echo "KRA API 키를 정상적으로 불러왔습니다."
 
       - name: Fetch race results
         env:
@@ -108,20 +108,58 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Check Dropbox token
+      - name: Create temporary Dropbox access token
         env:
-          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
         run: |
-          if [ -z "$DROPBOX_ACCESS_TOKEN" ]; then
-            echo "::error::DROPBOX_ACCESS_TOKEN이 없습니다."
+          if [ -z "$DROPBOX_APP_KEY" ] ||
+             [ -z "$DROPBOX_APP_SECRET" ] ||
+             [ -z "$DROPBOX_REFRESH_TOKEN" ]; then
+            echo "::error::Dropbox OAuth Secret이 없습니다."
             exit 1
           fi
 
-          echo "Dropbox 토큰을 정상적으로 불러왔습니다."
+          TOKEN_RESPONSE=$(
+            curl --silent --show-error \
+              --request POST \
+              --user "${DROPBOX_APP_KEY}:${DROPBOX_APP_SECRET}" \
+              --data-urlencode "refresh_token=${DROPBOX_REFRESH_TOKEN}" \
+              --data "grant_type=refresh_token" \
+              "https://api.dropboxapi.com/oauth2/token"
+          )
+
+          ACCESS_TOKEN=$(
+            printf '%s' "$TOKEN_RESPONSE" |
+              python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+          token = data.get("access_token")
+
+          if not token:
+              raise SystemExit(
+                  "access_token 발급 실패: " +
+                  str(
+                      data.get(
+                          "error_description",
+                          data.get("error", "알 수 없는 오류"),
+                      )
+                  )
+              )
+
+          print(token)
+          '
+          )
+
+          echo "::add-mask::$ACCESS_TOKEN"
+          printf 'DROPBOX_ACCESS_TOKEN=%s\n' "$ACCESS_TOKEN" >> "$GITHUB_ENV"
+
+          echo "새 Dropbox access token 발급 성공"
 
       - name: Ensure Dropbox practice folder exists
-        env:
-          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
         run: |
           STATUS=$(
             curl --silent --show-error \
@@ -146,7 +184,6 @@ jobs:
 
       - name: Upload files to Dropbox
         env:
-          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
           RC_MONTH: ${{ inputs.rc_month }}
         run: |
           upload_file() {
