@@ -98,7 +98,7 @@ jobs:
           print(f"CSV columns: {len(columns)}")
           PY
 
-      - name: Upload JSON and CSV
+      - name: Upload JSON and CSV as artifact
         uses: actions/upload-artifact@v7
         with:
           name: kra-race-results-${{ inputs.rc_month }}
@@ -107,3 +107,68 @@ jobs:
             output/race_results.csv
           if-no-files-found: error
           retention-days: 14
+
+      - name: Check Dropbox token
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$DROPBOX_ACCESS_TOKEN" ]; then
+            echo "::error::DROPBOX_ACCESS_TOKEN이 없습니다."
+            exit 1
+          fi
+
+          echo "Dropbox 토큰을 정상적으로 불러왔습니다."
+
+      - name: Ensure Dropbox practice folder exists
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+        run: |
+          STATUS=$(
+            curl --silent --show-error \
+              --request POST \
+              "https://api.dropboxapi.com/2/files/create_folder_v2" \
+              --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN" \
+              --header "Content-Type: application/json" \
+              --data '{"autorename":false,"path":"/practice"}' \
+              --output /tmp/dropbox-folder-response.json \
+              --write-out "%{http_code}"
+          )
+
+          if [ "$STATUS" = "200" ]; then
+            echo "Dropbox /practice 폴더를 만들었습니다."
+          elif [ "$STATUS" = "409" ]; then
+            echo "Dropbox /practice 폴더가 이미 있습니다."
+          else
+            echo "::error::Dropbox 폴더 준비 실패: HTTP $STATUS"
+            cat /tmp/dropbox-folder-response.json
+            exit 1
+          fi
+
+      - name: Upload files to Dropbox
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+          RC_MONTH: ${{ inputs.rc_month }}
+        run: |
+          upload_file() {
+            local source_path="$1"
+            local destination_path="$2"
+
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              "https://content.dropboxapi.com/2/files/upload" \
+              --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN" \
+              --header "Content-Type: application/octet-stream" \
+              --header "Dropbox-API-Arg: {\"autorename\":false,\"mode\":\"overwrite\",\"mute\":true,\"path\":\"$destination_path\",\"strict_conflict\":false}" \
+              --data-binary "@$source_path"
+
+            echo
+            echo "Uploaded: $destination_path"
+          }
+
+          upload_file \
+            "output/race_results_raw.json" \
+            "/practice/race_results_${RC_MONTH}_raw.json"
+
+          upload_file \
+            "output/race_results.csv" \
+            "/practice/race_results_${RC_MONTH}.csv"
