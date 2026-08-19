@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  check-settings:
+  collect:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,3 +30,21 @@ jobs:
           fi
 
           echo "API 키를 정상적으로 불러왔습니다."
+
+      - name: Fetch race results
+        env:
+          SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+        run: |
+          mkdir -p output
+
+          curl --fail --silent --show-error --get \
+            "https://apis.data.go.kr/B551015/API214_1/RaceDetailResult_1" \
+            --data-urlencode "serviceKey=$SERVICE_KEY" \
+            --data-urlencode "pageNo=1" \
+            --data-urlencode "numOfRows=100000" \
+            --data-urlencode "_type=json" \
+            --data-urlencode "meet=1" \
+            --data-urlencode "rc_month=${{ inputs.rc_month }}" \
+            --output output/race_results_raw.json
+
+          python -c 'import json; d=json.load(open("output/race_results_raw.json")); h=d["response"]["header"]; print("API result:", h); assert str(h["resultCode"]) in {"00", "0000"}, h; print("totalCount:", d["response"]["body"]["totalCount"])'
