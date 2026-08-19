@@ -38,6 +38,11 @@ jobs:
           mkdir -p output
 
           curl --fail --silent --show-error --get \
+            --connect-timeout 30 \
+            --max-time 180 \
+            --retry 3 \
+            --retry-connrefused \
+            --retry-max-time 600 \
             "https://apis.data.go.kr/B551015/API214_1/RaceDetailResult_1" \
             --data-urlencode "serviceKey=$SERVICE_KEY" \
             --data-urlencode "pageNo=1" \
@@ -48,7 +53,7 @@ jobs:
             --output output/race_results_raw.json
 
           python -c 'import json; d=json.load(open("output/race_results_raw.json")); h=d["response"]["header"]; print("API result:", h); assert str(h["resultCode"]) in {"00", "0000"}, h; print("totalCount:", d["response"]["body"]["totalCount"])'
-
+      
       - name: Convert JSON to CSV
         run: |
           python <<'PY'
