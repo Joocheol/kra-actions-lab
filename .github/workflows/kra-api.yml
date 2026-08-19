@@ -48,3 +48,62 @@ jobs:
             --output output/race_results_raw.json
 
           python -c 'import json; d=json.load(open("output/race_results_raw.json")); h=d["response"]["header"]; print("API result:", h); assert str(h["resultCode"]) in {"00", "0000"}, h; print("totalCount:", d["response"]["body"]["totalCount"])'
+
+      - name: Convert JSON to CSV
+        run: |
+          python <<'PY'
+          import csv
+          import json
+
+          with open(
+              "output/race_results_raw.json",
+              encoding="utf-8",
+          ) as file:
+              data = json.load(file)
+
+          body = data["response"]["body"]
+          raw_items = (body.get("items") or {}).get("item", [])
+
+          if isinstance(raw_items, dict):
+              items = [raw_items]
+          else:
+              items = raw_items
+
+          expected_rows = int(body["totalCount"])
+
+          if len(items) != expected_rows:
+              raise SystemExit(
+                  f"행 수 불일치: totalCount={expected_rows}, "
+                  f"실제 행={len(items)}"
+              )
+
+          columns = sorted(
+              {column for item in items for column in item}
+          )
+
+          with open(
+              "output/race_results.csv",
+              "w",
+              encoding="utf-8-sig",
+              newline="",
+          ) as file:
+              writer = csv.DictWriter(
+                  file,
+                  fieldnames=columns,
+              )
+              writer.writeheader()
+              writer.writerows(items)
+
+          print(f"CSV rows: {len(items)}")
+          print(f"CSV columns: {len(columns)}")
+          PY
+
+      - name: Upload JSON and CSV
+        uses: actions/upload-artifact@v7
+        with:
+          name: kra-race-results-${{ inputs.rc_month }}
+          path: |
+            output/race_results_raw.json
+            output/race_results.csv
+          if-no-files-found: error
+          retention-days: 14
